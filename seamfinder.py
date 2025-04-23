@@ -34,7 +34,7 @@ class SeamFinder():
         self.verbose: bool = verbose
         self.plotScale: float =  plotScale
 
-        self.minimumOverhead: int = max(self.dSamples, self.vSamples, self.validateN * self.validateStep)
+        self.minimumOverhead: int = max(self.dSamples, self.vSamples) + self.validateN * self.validateStep
         self.plotWidth: int = max(self.dSamples, self.vSamples) * self.plotScale
         self.seams: list[tuple[int,list[list[np.float64,np.float64]]]] = []
         self.audioPlayer = None
@@ -123,8 +123,7 @@ class SeamFinder():
         return (score2[1] + score2[2]) - (score1[1] + score1[2])
 
     def trySeam(self, startIndex=0, endIndex=None):
-        
-        if len(self.data) < endIndex + self.minimumOverhead:
+        if len(self.data) < endIndex + max(self.vSamples, self.dSamples):
             raise ValueError("Seam index too close to file end!")
         
         dataTypeMaxValue = np.iinfo(self.data.dtype).max
