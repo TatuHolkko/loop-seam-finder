@@ -17,8 +17,6 @@ class SeamFinder():
                  vTolerance:float = 0.001,
                  step:int = 1,
                  verbose:bool = False,
-                 plot:bool = False,
-                 audio:bool = False,
                  outputFileName:str = None
                  ):
         self.inputFileName: str = inputFileName
