@@ -61,24 +61,25 @@ class SeamFinder():
         if self.audioPlayer:
             self.audioPlayer.stop()
 
-    def plotSeam(self, cutIndex=None):
+    def plotSeam(self, startIndex=0, endIndex=None):
 
         plt.figure(figsize=(10, 4))
 
-        if not cutIndex:
-            cutIndex = len(self.data)
+        if not endIndex:
+            endIndex = len(self.data)
 
         for channelIndex in range(self.data.shape[1]):
-            
-            channel = self.data[:, channelIndex]
-            
-            start = channel[:int(self.plotWidth/2)]
 
-            endSliceDuration = int(self.plotWidth/2)
-            endSliceStartIndex = cutIndex - endSliceDuration
-            end = channel[endSliceStartIndex : endSliceStartIndex + endSliceDuration]
+            sliced = self.data[startIndex:endIndex, channelIndex]
+
+            plotHalf = int(self.plotWidth/2)
+
+            end = sliced[len(sliced) - plotHalf:]
             endTime = np.linspace(0., len(end) / self.sampleRate, len(end))
+
+            start = sliced[:plotHalf]
             startTime = np.linspace(endTime[-1], endTime[-1] + len(start) / self.sampleRate, len(start))
+            
             plt.plot(startTime, start, label='Audio waveform at the start')
             plt.plot(endTime, end, label='Audio waveform at the end')
         
@@ -107,10 +108,10 @@ class SeamFinder():
         derivativeTolerance = self.dTolerance * dataTypeMaxValue
         valueTolerance = self.vTolerance * dataTypeMaxValue
 
-        valueStart = self.audioValue(0)
-        valueEnd = self.audioValue(seamIndex)
-        derivativeStart = self.audioDerivative(0)
-        derivativeEnd = self.audioDerivative(seamIndex)
+        valueStart = self.audioValue(startIndex)
+        valueEnd = self.audioValue(endIndex)
+        derivativeStart = self.audioDerivative(startIndex)
+        derivativeEnd = self.audioDerivative(endIndex)
 
         diffs = []
         passes = True
@@ -137,7 +138,7 @@ class SeamFinder():
     def findSeam(self):
         index = len(self.data) - self.maxSamples
         for i in tqdm (range(math.floor(len(self.data)/self.step)), disable=(self.verbose != True), desc="Finding seams..."):
-            passes, diffs = self.trySeam(index)
+            passes, diffs = self.trySeam(endIndex=index)
             if passes:
                 self.seams.append((index, diffs))
                 return index
@@ -196,6 +197,6 @@ if __name__=="__main__":
         if clargs.plotaudio:
             finder.startAudioLoop(finder.outputFileName)
         if clargs.plot or clargs.plotaudio:
-            finder.plotSeam(seamIndex)
+            finder.plotSeam(endIndex=seamIndex)
         if clargs.plotaudio:
             finder.stopAudioLoop()
