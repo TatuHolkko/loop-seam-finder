@@ -7,157 +7,197 @@ from tqdm import tqdm
 from audioplayer import WavePlayerLoop
 
 
-parser = ArgumentParser()
-parser.add_argument("file", help="Input .wav file path")
-parser.add_argument("-ds", "--derivativesamples", default=10, type=int, help="Number of samples to use when calculating derivatives")
-parser.add_argument("-vs", "--valuesamples", default=10, type=int, help="Number of samples to use when calculating values")
-parser.add_argument("-dt", "--dtolerance", default=0.005, type=float, help="Tolerance when matching derivatives")
-parser.add_argument("-vt", "--vtolerance", default=0.01, type=float, help="Tolerance when matching values")
-parser.add_argument("-st", "--step", default=1, type=int, help="Step size in samples")
-parser.add_argument("-v", "--verbose", action="store_true")
-parser.add_argument("-p", "--plot", action="store_true", help="Plot the seam before and after adjustment.")
-parser.add_argument("-pa", "--plotaudio", action="store_true", help="Plot the seam and play the audio loop before and after adjustment.")
-parser.add_argument("-o", "--output", help="Output file. Defaults to input file with '_loop' postfix.")
+class SeamFinder():
 
-args = parser.parse_args()
+    def __init__(self,
+                 inputFileName:str,
+                 dSamples:int = 10,
+                 dTolerance:float = 0.001,
+                 vSamples:int = 10,
+                 vTolerance:float = 0.001,
+                 step:int = 1,
+                 verbose:bool = False,
+                 plot:bool = False,
+                 audio:bool = False,
+                 outputFileName:str = None
+                 ):
+        self.inputFileName: str = inputFileName
+        self.dSamples: int = dSamples
+        self.dTolerance: float = dTolerance
+        self.vSamples: int = vSamples
+        self.vTolerance: float = vTolerance
+        self.step: int = step
+        self.verbose: bool = verbose
+        self.outputFileName: str = outputFileName
 
-seams = []
+        self.maxSamples: int = max(self.dSamples, self.vSamples)
+        self.plotWidth: int = self.maxSamples * 10
+        self.seams: list[tuple[int,list[list[np.float64,np.float64]]]] = []
+        self.audioPlayer = None
 
-audioPlayer = None
+        sampleRate, data = self.readFile(self.inputFileName)
+        self.data: np.ndarray = data
+        self.sampleRate: int  = sampleRate
 
-plotWidth = max(args.valuesamples, args.derivativesamples) * 5
+        if not self.outputFileName:
+            self.outputFileName = self.inputFileName[:-4] + "_loop.wav"
 
-def verbosePrint(string):
-    if args.verbose:
-        print(string)
+    def verbosePrint(self, string):
+        if self.verbose:
+            print(string)
 
-def readFile(filePath):
-    verbosePrint(f"Reading wav file: {filePath}")
-    sampleRate, data = wavfile.read(filePath)
-    verbosePrint(f"Sample rate: {sampleRate} Hz")
-    verbosePrint(f"Length: {data.shape[0]} samples")
-    verbosePrint(f"Channels: {data.shape[1]}")
-    verbosePrint(f"Datatype: {data.dtype}")
-    return sampleRate, data
+    def readFile(self, filePath):
+        self.verbosePrint(f"Reading wav file: {filePath}")
+        sampleRate, data = wavfile.read(filePath)
+        self.verbosePrint(f"Sample rate: {sampleRate} Hz")
+        self.verbosePrint(f"Length: {data.shape[0]} samples")
+        self.verbosePrint(f"Channels: {data.shape[1]}")
+        self.verbosePrint(f"Datatype: {data.dtype}")
+        return sampleRate, data
 
-def startAudioLoop(fileName):
-    if not args.plotaudio:
-        return
-    audioPlayer = WavePlayerLoop(fileName)
-    audioPlayer.play()
+    def startAudioLoop(self, fileName):
+        self.audioPlayer = WavePlayerLoop(fileName)
+        self.audioPlayer.play()
 
-def stopAudioLoop():
-    if audioPlayer:
-        audioPlayer.stop()
+    def stopAudioLoop(self):
+        if self.audioPlayer:
+            self.audioPlayer.stop()
 
-def plotSeam(data, sampleRate, seams=None):
+    def plotSeam(self, cutIndex=None):
 
-    if not (args.plot or args.plotaudio):
-        return
+        plt.figure(figsize=(10, 4))
 
-    plt.figure(figsize=(10, 4))
+        if not cutIndex:
+            cutIndex = len(self.data)
 
-    for channelIndex in range(data.shape[1]):
-        channel = data[:, channelIndex]
-        start = channel[:int(plotWidth/2)]
-        end = channel[int(len(channel) - plotWidth/2):]
-        endTime = np.linspace(0., len(end) / sampleRate, len(end))
-        startTime = np.linspace(endTime[-1], endTime[-1] + len(start) / sampleRate, len(start))
-        plt.plot(startTime, start, label='Audio waveform')
-        plt.plot(endTime, end, label='Audio waveform')
+        for channelIndex in range(self.data.shape[1]):
+            
+            channel = self.data[:, channelIndex]
+            
+            start = channel[:int(self.plotWidth/2)]
+
+            endSliceDuration = int(self.plotWidth/2)
+            endSliceStartIndex = cutIndex - endSliceDuration
+            end = channel[endSliceStartIndex : endSliceStartIndex + endSliceDuration]
+            endTime = np.linspace(0., len(end) / self.sampleRate, len(end))
+            startTime = np.linspace(endTime[-1], endTime[-1] + len(start) / self.sampleRate, len(start))
+            plt.plot(startTime, start, label='Audio waveform at the start')
+            plt.plot(endTime, end, label='Audio waveform at the end')
+        
+        # visualize derivative sample amount
+        plt.axvline(endTime[-1] - self.maxSamples / self.sampleRate, 0, 0.1)
+        plt.axvline(endTime[-1] - self.maxSamples / self.sampleRate, 0.9, 1)
+        plt.axvline(endTime[-1] + self.maxSamples / self.sampleRate, 0, 0.1)
+        plt.axvline(endTime[-1] + self.maxSamples / self.sampleRate, 0.9, 1)
+
+        dataTypeMaxValue = np.iinfo(self.data.dtype).max
+        plt.ylim([-dataTypeMaxValue, dataTypeMaxValue])
+
+        plt.xlabel('Time [s]')
+        plt.ylabel('Amplitude')
+        plt.title('Waveform at the looping seam')
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+    def trySeam(self, seamIndex):
+        
+        if len(self.data) < seamIndex + max(self.dSamples, self.vSamples):
+            raise ValueError("Seam index too close to file end!")
+        
+        dataTypeMaxValue = np.iinfo(self.data.dtype).max
+        derivativeTolerance = self.dTolerance * dataTypeMaxValue
+        valueTolerance = self.vTolerance * dataTypeMaxValue
+
+        valueStart = self.audioValue(0)
+        valueEnd = self.audioValue(seamIndex)
+        derivativeStart = self.audioDerivative(0)
+        derivativeEnd = self.audioDerivative(seamIndex)
+
+        diffs = []
+        passes = True
+
+        for channelIndex in range(self.data.shape[1]):
+            valueDiff = abs(np.int64(valueStart[channelIndex]) - np.int64(valueEnd[channelIndex]))
+            derivativeDiff = abs(derivativeStart[channelIndex] - derivativeEnd[channelIndex])
+            if valueDiff > valueTolerance:
+                passes = False
+            if derivativeDiff > derivativeTolerance:
+                passes = False
+            diffs.append(np.float64(valueDiff) / dataTypeMaxValue)
+            diffs.append(np.float64(derivativeDiff) / dataTypeMaxValue)
+        return (passes, diffs)
+
+    def audioDerivative(self, index):
+        s1 = np.float64(self.data[index])
+        s2 = np.float64(self.data[index + self.dSamples - 1])
+        return (s2 - s1) / self.dSamples
+
+    def audioValue(self, index):
+        return np.average(self.data[index:index + self.vSamples], 0)
+
+    def findSeam(self):
+        index = len(self.data) - self.maxSamples
+        for i in tqdm (range(math.floor(len(self.data)/self.step)), disable=(self.verbose != True), desc="Finding seams..."):
+            passes, diffs = self.trySeam(index)
+            if passes:
+                self.seams.append((index, diffs))
+                return index
+            index = index - self.step
+        return 0
+
+    def writeResult(self, cutIndex):
+        self.verbosePrint(f"Writing result: {self.outputFileName}")
+        wavfile.write(self.outputFileName, self.sampleRate, self.data[:cutIndex])
+
+
+if __name__=="__main__":
+
+    parser = ArgumentParser()
+    parser.add_argument("file", help="Input .wav file path")
+    parser.add_argument("-ds", "--derivativesamples", default=10, type=int, help="Number of samples to use when calculating derivatives")
+    parser.add_argument("-vs", "--valuesamples", default=10, type=int, help="Number of samples to use when calculating values")
+    parser.add_argument("-dt", "--derivativetolerance", default=0.005, type=float, help="Tolerance when matching derivatives")
+    parser.add_argument("-vt", "--valuetolerance", default=0.01, type=float, help="Tolerance when matching values")
+    parser.add_argument("-st", "--step", default=1, type=int, help="Step size in samples")
+    parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("-p", "--plot", action="store_true", help="Plot the seam before and after adjustment.")
+    parser.add_argument("-pa", "--plotaudio", action="store_true", help="Plot the seam and play the audio loop before and after adjustment.")
+    parser.add_argument("-o", "--output", help="Output file. Defaults to input file with '_loop' postfix.")
+    clargs = parser.parse_args()
     
-    # visualize derivative sample amount
-    plt.axvline(endTime[-1] - args.derivativesamples / sampleRate, 0, 0.1)
-    plt.axvline(endTime[-1] - args.derivativesamples / sampleRate, 0.9, 1)
-    plt.axvline(endTime[-1] + args.derivativesamples / sampleRate, 0, 0.1)
-    plt.axvline(endTime[-1] + args.derivativesamples / sampleRate, 0.9, 1)
-
-    dataTypeMaxValue = np.iinfo(data.dtype).max
-    plt.ylim([-dataTypeMaxValue, dataTypeMaxValue])
-
-    plt.xlabel('Time [s]')
-    plt.ylabel('Amplitude')
-    plt.title('Waveform at the looping seam')
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-def trySeam(data, seamIndex):
+    finder = SeamFinder(
+        inputFileName=clargs.file,
+        dSamples=clargs.derivativesamples,
+        dTolerance=clargs.derivativetolerance,
+        vSamples=clargs.valuesamples,
+        vTolerance=clargs.valuetolerance,
+        step=clargs.step,
+        verbose=clargs.verbose,
+        outputFileName=clargs.output
+        )
     
-    if len(data) < seamIndex + max(args.derivativesamples, args.valuesamples):
-        raise ValueError("Seam index too close to file end!")
-    
-    dataTypeMaxValue = np.iinfo(data.dtype).max
-    derivativeTolerance = args.dtolerance * dataTypeMaxValue
-    valueTolerance = args.vtolerance * dataTypeMaxValue
+    if clargs.plotaudio:
+        finder.startAudioLoop(finder.inputFileName)
+    if clargs.plot or clargs.plotaudio:
+        finder.plotSeam()
+    if clargs.plotaudio:
+        finder.stopAudioLoop()
 
-    valueStart = value(data, 0, args.derivativesamples)
-    valueEnd = value(data, seamIndex, args.derivativesamples)
-    derivativeStart = derivative(data, 0, args.derivativesamples)
-    derivativeEnd = derivative(data, seamIndex, args.derivativesamples)
+    seamIndex = finder.findSeam()
 
-    diffs = []
-    passes = True
-
-    for channelIndex in range(data.shape[1]):
-        valueDiff = abs(np.int64(valueStart[channelIndex]) - np.int64(valueEnd[channelIndex]))
-        derivativeDiff = abs(derivativeStart[channelIndex] - derivativeEnd[channelIndex])
-        if valueDiff > valueTolerance:
-            passes = False
-        if derivativeDiff > derivativeTolerance:
-            passes = False
-        diffs.append(np.float64(valueDiff) / dataTypeMaxValue)
-        diffs.append(np.float64(derivativeDiff) / dataTypeMaxValue)
-    return (passes, diffs)
-
-def derivative(data, index, samples):
-    s1 = np.float64(data[index])
-    s2 = np.float64(data[index + samples])
-    return (s2 - s1) / samples
-
-def value(data, index, samples):
-    return np.average(data[index:index + samples], 0)
-
-def findSeam(data):
-    step = args.step
-    index = len(data) - max(args.valuesamples, args.derivativesamples) - 1
-    for i in tqdm (range(math.floor(len(data)/step)), disable=(args.verbose != True), desc="Finding seams..."):
-        passes, diffs = trySeam(data, index)
-        if passes:
-            seams.append((index, diffs))
-            return index
-        index = index - step
-    return 0
-
-def writeResult(data, sampleRate):
-    fileName = None
-    if args.output:
-        fileName = args.output
+    if seamIndex == 0:
+        print(f"Failed to find seam with given tolerances: Value tolerance {clargs.valuetolerance}, Derivative tolerance {clargs.derivativetolerance}")
     else:
-        fileName = args.file[:-4] + "_loop.wav"
-    print(f"Writing result: {fileName}")
-    wavfile.write(fileName, sampleRate, data)
-    return fileName
+        print(f"Seam found at {seamIndex}, {finder.data.shape[0]-seamIndex} samples or {(finder.data.shape[0]-seamIndex) / finder.sampleRate:.4f}s from the end of the file")
+        print(f"Seam normalized value difference: {finder.seams[0][1][0]:.3f} {finder.seams[0][1][2]:.3f}")
+        print(f"Seam normalized derivative difference: {finder.seams[0][1][1]:.3f} {finder.seams[0][1][3]:.3f}")
 
+        finder.writeResult(seamIndex)
 
-sampleRate, data = readFile(args.file)
-
-startAudioLoop(args.file)
-plotSeam(data, sampleRate)
-startAudioLoop()
-
-seamIndex = findSeam(data)
-
-if seamIndex == 0:
-    print(f"Failed to find seam with given tolerances: Value tolerance {args.vtolerance}, Derivative tolerance {args.dtolerance}")
-else:
-    print(f"Seam found at {seamIndex}, {data.shape[0]-seamIndex} samples or {(data.shape[0]-seamIndex) / sampleRate:.4f}s from the end of the file")
-    verbosePrint(f"Seam normalized value difference: {seams[0][1][0]:.3f} {seams[0][1][2]:.3f}")
-    verbosePrint(f"Seam normalized derivative difference: {seams[0][1][1]:.3f} {seams[0][1][3]:.3f}")
-
-    outputFile = writeResult(data[:seamIndex + 1], sampleRate)
-
-    startAudioLoop(outputFile)
-    plotSeam(data[:seamIndex + 1], sampleRate)
-    stopAudioLoop()
-
+        if clargs.plotaudio:
+            finder.startAudioLoop(finder.outputFileName)
+        if clargs.plot or clargs.plotaudio:
+            finder.plotSeam(seamIndex)
+        if clargs.plotaudio:
+            finder.stopAudioLoop()
