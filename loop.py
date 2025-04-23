@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from scipy.io import wavfile
 from argparse import ArgumentParser
 from tqdm import tqdm
-
+from audioplayer import WavePlayerLoop
 
 
 parser = ArgumentParser()
@@ -120,12 +120,18 @@ def writeResult(data, sampleRate):
         fileName = args.file[:-4] + "_loop.wav"
     print(f"Writing result: {fileName}")
     wavfile.write(fileName, sampleRate, data)
+    return fileName
 
 
 sampleRate, data = readFile(args.file)
 
+audioPlayer = WavePlayerLoop(args.file)
+audioPlayer.play()
+
 if args.plot:
     plotSeam(data, sampleRate)
+
+audioPlayer.stop()
 
 seamIndex = findSeam(data)
 
@@ -135,7 +141,10 @@ else:
     print(f"Seam found at {seamIndex}, {data.shape[0]-seamIndex} samples or {(data.shape[0]-seamIndex) / sampleRate:.4f}s from the end of the file")
     verbosePrint(f"Seam normalized value difference: {seams[0][1][0]:.3f} {seams[0][1][2]:.3f}")
     verbosePrint(f"Seam normalized derivative difference: {seams[0][1][1]:.3f} {seams[0][1][3]:.3f}")
+    outputFile = writeResult(data[:seamIndex + 1], sampleRate)
+    audioPlayer = WavePlayerLoop(outputFile)
+    audioPlayer.play()
     if args.plot:
         plotSeam(data[:seamIndex + 1], sampleRate)
-    writeResult(data[:seamIndex + 1], sampleRate)
+    audioPlayer.stop()
 

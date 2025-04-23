@@ -7,7 +7,7 @@
 
         {
             "name": "Debug with motor.wav",
-            "args": ["audio/motor.wav", "-p", "-v", "-st", "1"],
+            "args": ["audio/motor.wav", "-p", "-v"],
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
