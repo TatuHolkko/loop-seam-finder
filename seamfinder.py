@@ -5,7 +5,7 @@ from scipy.io import wavfile
 from argparse import ArgumentParser
 from tqdm import tqdm
 from audioplayer import WavePlayerLoop
-
+from functools import cmp_to_key
 
 class SeamFinder():
 
@@ -33,7 +33,7 @@ class SeamFinder():
         self.outputFileName: str = outputFileName
 
         self.minimumOverhead: int = max(self.dSamples, self.vSamples, self.validateN * self.validateStep)
-        self.plotWidth: int = max(self.dSamples, self.vSamples) * 10
+        self.plotWidth: int = max(self.dSamples, self.vSamples) * 100
         self.seams: list[tuple[int,list[list[np.float64,np.float64]]]] = []
         self.audioPlayer = None
 
@@ -103,15 +103,22 @@ class SeamFinder():
         plt.tight_layout()
         plt.show()
 
-    def validateSeam(self, seamIndex):
-        validationResult = [0, 0, 0]
+    def score(self, seamIndex):
+        seamScore = [0, 0, 0]
         for i in range(self.validateN):
             passed, diffs = self.trySeam(startIndex= i * self.validateStep, endIndex=seamIndex + i * self.validateStep)
             if passed:
-                validationResult[0] += 1
-            validationResult[1] += max(diffs[0][0], diffs[0][1])
-            validationResult[2] += max(diffs[1][0], diffs[1][1])
-        return validationResult
+                seamScore[0] += 1
+            seamScore[1] += max(diffs[0], diffs[2])
+            seamScore[2] += max(diffs[1], diffs[3])
+        return seamScore
+
+    def compareSeamScores(self, score1, score2):
+        if score1[0] > score2[0]:
+            return 1
+        elif score1[0] < score2[0]:
+            return -1
+        return (score2[1] + score2[2]) - (score1[1] + score1[2])
 
     def trySeam(self, startIndex=0, endIndex=None):
         
@@ -151,13 +158,20 @@ class SeamFinder():
 
     def findSeam(self):
         index = len(self.data) - self.minimumOverhead
-        for i in tqdm (range(math.floor(len(self.data)/self.candStep)), disable=(self.verbose != True), desc="Finding seams..."):
+        for i in tqdm(range(math.floor(len(self.data)/self.candStep)), disable=(self.verbose != True), desc="Finding seams..."):
             passes, diffs = self.trySeam(endIndex=index)
             if passes:
                 self.seams.append((index, diffs))
-                return index
             index = index - self.candStep
-        return 0
+        self.verbosePrint(f"Found {len(self.seams)} seam candidates.")
+        if not self.seams:
+            return 0
+        scoredSeams = []
+        for i in tqdm(range(len(self.seams)), disable=(self.verbose != True), desc="Evaluating candidates..."):
+            seamScore = self.score(self.seams[i][0])
+            scoredSeams.append((self.seams[i][0], seamScore, self.seams[i][1]))
+        sortedSeams = sorted(scoredSeams, key=cmp_to_key(lambda scoredSeam1, scoredSeam2: self.compareSeamScores(scoredSeam1[1], scoredSeam2[1])))
+        return sortedSeams[0]
 
     def writeResult(self, cutIndex):
         self.verbosePrint(f"Writing result: {self.outputFileName}")
@@ -201,14 +215,15 @@ if __name__=="__main__":
     if clargs.plotaudio:
         finder.stopAudioLoop()
 
-    seamIndex = finder.findSeam()
+    seamIndex, score, diffs = finder.findSeam()
 
     if seamIndex == 0:
         print(f"Failed to find seam with given tolerances: Value tolerance {clargs.valuetolerance}, Derivative tolerance {clargs.derivativetolerance}")
     else:
-        print(f"Seam found at {seamIndex}, {finder.data.shape[0]-seamIndex} samples or {(finder.data.shape[0]-seamIndex) / finder.sampleRate:.4f}s from the end of the file")
-        print(f"Seam normalized value difference: {finder.seams[0][1][0]:.3f} {finder.seams[0][1][2]:.3f}")
-        print(f"Seam normalized derivative difference: {finder.seams[0][1][1]:.3f} {finder.seams[0][1][3]:.3f}")
+        finder.verbosePrint(f"Seam found at {seamIndex}, {finder.data.shape[0]-seamIndex} samples or {(finder.data.shape[0]-seamIndex) / finder.sampleRate:.4f}s from the end of the file")
+        finder.verbosePrint(f"Seam normalized value difference: {diffs[0]:.3f} {diffs[2]:.3f}")
+        finder.verbosePrint(f"Seam normalized derivative difference: {diffs[1]:.3f} {diffs[3]:.3f}")
+        finder.verbosePrint(f"Seam score: {score[0]}, {score[1]:.3f}, {score[2]:.3f}")
 
         finder.writeResult(seamIndex)
 
