@@ -83,11 +83,11 @@ class SeamFinder():
             plt.plot(startTime, start, label='Audio waveform at the start')
             plt.plot(endTime, end, label='Audio waveform at the end')
         
-        # visualize derivative sample amount
-        plt.axvline(endTime[-1] - self.maxSamples / self.sampleRate, 0, 0.1)
-        plt.axvline(endTime[-1] - self.maxSamples / self.sampleRate, 0.9, 1)
-        plt.axvline(endTime[-1] + self.maxSamples / self.sampleRate, 0, 0.1)
-        plt.axvline(endTime[-1] + self.maxSamples / self.sampleRate, 0.9, 1)
+        # visualize derivative and value sample amount
+        plt.axvline(endTime[-1] - self.vSamples / self.sampleRate, 0, 0.1)
+        plt.axvline(endTime[-1] + self.vSamples / self.sampleRate, 0, 0.1)
+        plt.axvline(endTime[-1] - self.dSamples / self.sampleRate, 0.9, 1)
+        plt.axvline(endTime[-1] + self.dSamples / self.sampleRate, 0.9, 1)
 
         dataTypeMaxValue = np.iinfo(self.data.dtype).max
         plt.ylim([-dataTypeMaxValue, dataTypeMaxValue])
