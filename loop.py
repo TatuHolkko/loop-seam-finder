@@ -15,12 +15,15 @@ parser.add_argument("-dt", "--dtolerance", default=0.005, type=float, help="Tole
 parser.add_argument("-vt", "--vtolerance", default=0.01, type=float, help="Tolerance when matching values")
 parser.add_argument("-st", "--step", default=1, type=int, help="Step size in samples")
 parser.add_argument("-v", "--verbose", action="store_true")
-parser.add_argument("-p", "--plot", action="store_true")
+parser.add_argument("-p", "--plot", action="store_true", help="Plot the seam before and after adjustment.")
+parser.add_argument("-pa", "--plotaudio", action="store_true", help="Plot the seam and play the audio loop before and after adjustment.")
 parser.add_argument("-o", "--output", help="Output file. Defaults to input file with '_loop' postfix.")
 
 args = parser.parse_args()
 
 seams = []
+
+audioPlayer = None
 
 plotWidth = max(args.valuesamples, args.derivativesamples) * 5
 
@@ -37,7 +40,20 @@ def readFile(filePath):
     verbosePrint(f"Datatype: {data.dtype}")
     return sampleRate, data
 
+def startAudioLoop(fileName):
+    if not args.plotaudio:
+        return
+    audioPlayer = WavePlayerLoop(fileName)
+    audioPlayer.play()
+
+def stopAudioLoop():
+    if audioPlayer:
+        audioPlayer.stop()
+
 def plotSeam(data, sampleRate, seams=None):
+
+    if not (args.plot or args.plotaudio):
+        return
 
     plt.figure(figsize=(10, 4))
 
@@ -49,6 +65,7 @@ def plotSeam(data, sampleRate, seams=None):
         startTime = np.linspace(endTime[-1], endTime[-1] + len(start) / sampleRate, len(start))
         plt.plot(startTime, start, label='Audio waveform')
         plt.plot(endTime, end, label='Audio waveform')
+    
     # visualize derivative sample amount
     plt.axvline(endTime[-1] - args.derivativesamples / sampleRate, 0, 0.1)
     plt.axvline(endTime[-1] - args.derivativesamples / sampleRate, 0.9, 1)
@@ -125,13 +142,9 @@ def writeResult(data, sampleRate):
 
 sampleRate, data = readFile(args.file)
 
-audioPlayer = WavePlayerLoop(args.file)
-audioPlayer.play()
-
-if args.plot:
-    plotSeam(data, sampleRate)
-
-audioPlayer.stop()
+startAudioLoop(args.file)
+plotSeam(data, sampleRate)
+startAudioLoop()
 
 seamIndex = findSeam(data)
 
@@ -141,10 +154,10 @@ else:
     print(f"Seam found at {seamIndex}, {data.shape[0]-seamIndex} samples or {(data.shape[0]-seamIndex) / sampleRate:.4f}s from the end of the file")
     verbosePrint(f"Seam normalized value difference: {seams[0][1][0]:.3f} {seams[0][1][2]:.3f}")
     verbosePrint(f"Seam normalized derivative difference: {seams[0][1][1]:.3f} {seams[0][1][3]:.3f}")
+
     outputFile = writeResult(data[:seamIndex + 1], sampleRate)
-    audioPlayer = WavePlayerLoop(outputFile)
-    audioPlayer.play()
-    if args.plot:
-        plotSeam(data[:seamIndex + 1], sampleRate)
-    audioPlayer.stop()
+
+    startAudioLoop(outputFile)
+    plotSeam(data[:seamIndex + 1], sampleRate)
+    stopAudioLoop()
 
