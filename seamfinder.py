@@ -11,6 +11,7 @@ class SeamFinder():
 
     def __init__(self,
                  inputFileName:str,
+                 outputFileName:str = None,
                  dSamples:int = 10,
                  dTolerance:float = 0.001,
                  vSamples:int = 10,
@@ -18,10 +19,11 @@ class SeamFinder():
                  candidateStep:int = 1,
                  validateStep:int = 10,
                  validateN:int = 10,
-                 verbose:bool = False,
-                 outputFileName:str = None
+                 plotScale: float = 10,
+                 verbose:bool = False
                  ):
         self.inputFileName: str = inputFileName
+        self.outputFileName: str = outputFileName
         self.dSamples: int = dSamples
         self.dTolerance: float = dTolerance
         self.vSamples: int = vSamples
@@ -30,10 +32,10 @@ class SeamFinder():
         self.validateStep: int = validateStep
         self.validateN: int = validateN
         self.verbose: bool = verbose
-        self.outputFileName: str = outputFileName
+        self.plotScale: float =  plotScale
 
         self.minimumOverhead: int = max(self.dSamples, self.vSamples, self.validateN * self.validateStep)
-        self.plotWidth: int = max(self.dSamples, self.vSamples) * 100
+        self.plotWidth: int = max(self.dSamples, self.vSamples) * self.plotScale
         self.seams: list[tuple[int,list[list[np.float64,np.float64]]]] = []
         self.audioPlayer = None
 
@@ -191,12 +193,14 @@ if __name__=="__main__":
     parser.add_argument("-vn", "--validaten", default=10, type=int, help="Number of evaluation points to use.")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("-p", "--plot", action="store_true", help="Plot the seam before and after adjustment.")
+    parser.add_argument("-ps", "--plotscale", default=10, type=float, help="Plot viewing scale.")
     parser.add_argument("-pa", "--plotaudio", action="store_true", help="Plot the seam and play the audio loop before and after adjustment.")
     parser.add_argument("-o", "--output", help="Output file. Defaults to input file with '_loop' postfix.")
     clargs = parser.parse_args()
     
     finder = SeamFinder(
         inputFileName=clargs.file,
+        outputFileName=clargs.output,
         dSamples=clargs.derivativesamples,
         dTolerance=clargs.derivativetolerance,
         vSamples=clargs.valuesamples,
@@ -205,7 +209,7 @@ if __name__=="__main__":
         validateStep=clargs.validatestep,
         validateN=clargs.validaten,
         verbose=clargs.verbose,
-        outputFileName=clargs.output
+        plotScale=clargs.plotscale
         )
     
     if clargs.plotaudio:
