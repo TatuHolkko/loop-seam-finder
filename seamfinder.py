@@ -15,7 +15,9 @@ class SeamFinder():
                  dTolerance:float = 0.001,
                  vSamples:int = 10,
                  vTolerance:float = 0.001,
-                 step:int = 1,
+                 candidateStep:int = 1,
+                 validateStep:int = 10,
+                 validateN:int = 10,
                  verbose:bool = False,
                  outputFileName:str = None
                  ):
@@ -24,12 +26,14 @@ class SeamFinder():
         self.dTolerance: float = dTolerance
         self.vSamples: int = vSamples
         self.vTolerance: float = vTolerance
-        self.step: int = step
+        self.candStep: int = candidateStep
+        self.validateStep: int = validateStep
+        self.validateN: int = validateN
         self.verbose: bool = verbose
         self.outputFileName: str = outputFileName
 
-        self.maxSamples: int = max(self.dSamples, self.vSamples)
-        self.plotWidth: int = self.maxSamples * 10
+        self.minimumOverhead: int = max(self.dSamples, self.vSamples, self.validateN * self.validateStep)
+        self.plotWidth: int = max(self.dSamples, self.vSamples) * 10
         self.seams: list[tuple[int,list[list[np.float64,np.float64]]]] = []
         self.audioPlayer = None
 
@@ -84,10 +88,10 @@ class SeamFinder():
             plt.plot(endTime, end, label='Audio waveform at the end')
         
         # visualize derivative sample amount
-        plt.axvline(endTime[-1] - self.maxSamples / self.sampleRate, 0, 0.1)
-        plt.axvline(endTime[-1] - self.maxSamples / self.sampleRate, 0.9, 1)
-        plt.axvline(endTime[-1] + self.maxSamples / self.sampleRate, 0, 0.1)
-        plt.axvline(endTime[-1] + self.maxSamples / self.sampleRate, 0.9, 1)
+        plt.axvline(endTime[-1] - max(self.dSamples, self.vSamples) / self.sampleRate, 0, 0.1)
+        plt.axvline(endTime[-1] - max(self.dSamples, self.vSamples) / self.sampleRate, 0.9, 1)
+        plt.axvline(endTime[-1] + max(self.dSamples, self.vSamples) / self.sampleRate, 0, 0.1)
+        plt.axvline(endTime[-1] + max(self.dSamples, self.vSamples) / self.sampleRate, 0.9, 1)
 
         dataTypeMaxValue = np.iinfo(self.data.dtype).max
         plt.ylim([-dataTypeMaxValue, dataTypeMaxValue])
@@ -99,12 +103,19 @@ class SeamFinder():
         plt.tight_layout()
         plt.show()
 
-    def trySeam(self, startIndex=0, endIndex=None):
+    def validateSeam(self, seamIndex):
+        validationResult = [0, 0, 0]
+        for i in range(self.validateN):
+            passed, diffs = self.trySeam(startIndex= i * self.validateStep, endIndex=seamIndex + i * self.validateStep)
+            if passed:
+                validationResult[0] += 1
+            validationResult[1] += max(diffs[0][0], diffs[0][1])
+            validationResult[2] += max(diffs[1][0], diffs[1][1])
+        return validationResult
 
-        if not endIndex:
-            endIndex = len(self.data)
+    def trySeam(self, startIndex=0, endIndex=None):
         
-        if len(self.data) < seamIndex + max(self.dSamples, self.vSamples):
+        if len(self.data) < endIndex + self.minimumOverhead:
             raise ValueError("Seam index too close to file end!")
         
         dataTypeMaxValue = np.iinfo(self.data.dtype).max
@@ -139,13 +150,13 @@ class SeamFinder():
         return np.average(self.data[index:index + self.vSamples], 0)
 
     def findSeam(self):
-        index = len(self.data) - self.maxSamples
-        for i in tqdm (range(math.floor(len(self.data)/self.step)), disable=(self.verbose != True), desc="Finding seams..."):
+        index = len(self.data) - self.minimumOverhead
+        for i in tqdm (range(math.floor(len(self.data)/self.candStep)), disable=(self.verbose != True), desc="Finding seams..."):
             passes, diffs = self.trySeam(endIndex=index)
             if passes:
                 self.seams.append((index, diffs))
                 return index
-            index = index - self.step
+            index = index - self.candStep
         return 0
 
     def writeResult(self, cutIndex):
@@ -161,7 +172,9 @@ if __name__=="__main__":
     parser.add_argument("-vs", "--valuesamples", default=10, type=int, help="Number of samples to use when calculating values")
     parser.add_argument("-dt", "--derivativetolerance", default=0.005, type=float, help="Tolerance when matching derivatives")
     parser.add_argument("-vt", "--valuetolerance", default=0.01, type=float, help="Tolerance when matching values")
-    parser.add_argument("-st", "--step", default=1, type=int, help="Step size in samples")
+    parser.add_argument("-cst", "--candidatestep", default=1, type=int, help="Step size in samples to use when finding initial points as seam candidates.")
+    parser.add_argument("-vst", "--validatestep", default=10, type=int, help="Step size in samples to use when evaluating seam candidates.")
+    parser.add_argument("-vn", "--validaten", default=10, type=int, help="Number of evaluation points to use.")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("-p", "--plot", action="store_true", help="Plot the seam before and after adjustment.")
     parser.add_argument("-pa", "--plotaudio", action="store_true", help="Plot the seam and play the audio loop before and after adjustment.")
@@ -174,7 +187,9 @@ if __name__=="__main__":
         dTolerance=clargs.derivativetolerance,
         vSamples=clargs.valuesamples,
         vTolerance=clargs.valuetolerance,
-        step=clargs.step,
+        candidateStep=clargs.candidatestep,
+        validateStep=clargs.validatestep,
+        validateN=clargs.validaten,
         verbose=clargs.verbose,
         outputFileName=clargs.output
         )
