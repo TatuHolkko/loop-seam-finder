@@ -7,10 +7,10 @@
 
         {
             "name": "Debug with motor.wav",
-            "args": ["audio/motor.wav", "-p", "-v"],
+            "args": ["audio/2sine.wav", "-v", "-vt", "0.01", "-dt", "0.003", "-vs", "100", "-ds", "10", "-vn", "10", "-vst", "10"],
             "type": "debugpy",
             "request": "launch",
-            "program": "${file}",
+            "program": "./seamfinder.py",
             "console": "integratedTerminal"
         }
     ]
