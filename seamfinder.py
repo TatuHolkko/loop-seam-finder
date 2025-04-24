@@ -119,10 +119,10 @@ class SeamFinder():
 
     def compareSeamScores(self, score1, score2):
         if score1[0] > score2[0]:
-            return 1
-        elif score1[0] < score2[0]:
             return -1
-        return (score2[1] + score2[2]) - (score1[1] + score1[2])
+        elif score1[0] < score2[0]:
+            return 1
+        return (score1[1] + score1[2]) - (score2[1] + score2[2])
 
     def trySeam(self, startIndex=0, endIndex=None):
         if len(self.data) < endIndex + max(self.vSamples, self.dSamples):
