@@ -17,6 +17,7 @@ class SeamFinder():
                  vSamples:int = 10,
                  vTolerance:float = 0.001,
                  candidateStep:int = 1,
+                 candidateMax: float = 0.5,
                  validateStep:int = 10,
                  validateN:int = 10,
                  plotScale: float = 10,
@@ -29,6 +30,7 @@ class SeamFinder():
         self.vSamples: int = vSamples
         self.vTolerance: float = vTolerance
         self.candStep: int = candidateStep
+        self.candMax: float = candidateMax
         self.validateStep: int = validateStep
         self.validateN: int = validateN
         self.verbose: bool = verbose
@@ -159,7 +161,7 @@ class SeamFinder():
 
     def findSeam(self):
         index = len(self.data) - self.minimumOverhead
-        for i in tqdm(range(math.floor(len(self.data)/self.candStep)), disable=(self.verbose != True), desc="Finding seams..."):
+        for i in tqdm(range(math.floor(self.candMax * len(self.data)/self.candStep)), disable=(self.verbose != True), desc="Finding seams..."):
             passes, diffs = self.trySeam(endIndex=index)
             if passes:
                 self.seams.append((index, diffs))
@@ -188,6 +190,7 @@ if __name__=="__main__":
     parser.add_argument("-dt", "--derivativetolerance", default=0.005, type=float, help="Tolerance when matching derivatives")
     parser.add_argument("-vt", "--valuetolerance", default=0.01, type=float, help="Tolerance when matching values")
     parser.add_argument("-cst", "--candidatestep", default=1, type=int, help="Step size in samples to use when finding initial points as seam candidates.")
+    parser.add_argument("-cm", "--candidatemax", default=0.5, type=float, help="Maximum proportional [0,1] distance from the end to look for candidates.")
     parser.add_argument("-vst", "--validatestep", default=10, type=int, help="Step size in samples to use when evaluating seam candidates.")
     parser.add_argument("-vn", "--validaten", default=10, type=int, help="Number of evaluation points to use.")
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -205,6 +208,7 @@ if __name__=="__main__":
         vSamples=clargs.valuesamples,
         vTolerance=clargs.valuetolerance,
         candidateStep=clargs.candidatestep,
+        candidateMax=clargs.candidatemax,
         validateStep=clargs.validatestep,
         validateN=clargs.validaten,
         verbose=clargs.verbose,
