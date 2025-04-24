@@ -4,8 +4,9 @@ import matplotlib.pyplot as plt
 from scipy.io import wavfile
 from argparse import ArgumentParser
 from tqdm import tqdm
-from audioplayer import WavePlayerLoop
 from functools import cmp_to_key
+
+from interactive import InteractiveResultViewer
 
 class SeamFinder():
 
@@ -61,51 +62,6 @@ class SeamFinder():
         self.verbosePrint(f"Datatype: {data.dtype}")
         return sampleRate, data
 
-    def startAudioLoop(self, fileName):
-        self.audioPlayer = WavePlayerLoop(fileName)
-        self.audioPlayer.play()
-
-    def stopAudioLoop(self):
-        if self.audioPlayer:
-            self.audioPlayer.stop()
-
-    def plotSeam(self, startIndex=0, endIndex=None):
-
-        plt.figure(figsize=(10, 4))
-
-        if not endIndex:
-            endIndex = len(self.data)
-
-        for channelIndex in range(self.data.shape[1]):
-
-            sliced = self.data[startIndex:endIndex, channelIndex]
-
-            plotHalf = int(self.plotWidth/2)
-
-            end = sliced[len(sliced) - plotHalf:]
-            endTime = np.linspace(0., len(end) / self.sampleRate, len(end))
-
-            start = sliced[:plotHalf]
-            startTime = np.linspace(endTime[-1], endTime[-1] + len(start) / self.sampleRate, len(start))
-            
-            plt.plot(startTime, start, label='Audio waveform at the start')
-            plt.plot(endTime, end, label='Audio waveform at the end')
-        
-        # visualize derivative and value sample amount
-        plt.axvline(endTime[-1] - self.vSamples / self.sampleRate, 0, 0.1)
-        plt.axvline(endTime[-1] + self.vSamples / self.sampleRate, 0, 0.1)
-        plt.axvline(endTime[-1] - self.dSamples / self.sampleRate, 0.9, 1)
-        plt.axvline(endTime[-1] + self.dSamples / self.sampleRate, 0.9, 1)
-
-        dataTypeMaxValue = np.iinfo(self.data.dtype).max
-        plt.ylim([-dataTypeMaxValue, dataTypeMaxValue])
-
-        plt.xlabel('Time [s]')
-        plt.ylabel('Amplitude')
-        plt.title('Waveform at the looping seam')
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
 
     def score(self, seamIndex):
         seamScore = [0, 0, 0]
@@ -174,7 +130,7 @@ class SeamFinder():
             seamScore = self.score(self.seams[i][0])
             scoredSeams.append((self.seams[i][0], seamScore, self.seams[i][1]))
         sortedSeams = sorted(scoredSeams, key=cmp_to_key(lambda scoredSeam1, scoredSeam2: self.compareSeamScores(scoredSeam1[1], scoredSeam2[1])))
-        return sortedSeams[0]
+        return sortedSeams
 
     def writeResult(self, cutIndex):
         self.verbosePrint(f"Writing result: {self.outputFileName}")
@@ -215,28 +171,12 @@ if __name__=="__main__":
         plotScale=clargs.plotscale
         )
     
-    if clargs.plotaudio:
-        finder.startAudioLoop(finder.inputFileName)
-    if clargs.plot or clargs.plotaudio:
-        finder.plotSeam()
-    if clargs.plotaudio:
-        finder.stopAudioLoop()
 
-    seamIndex, score, diffs = finder.findSeam()
 
-    if seamIndex == 0:
+    results = finder.findSeam()
+
+    if not results:
         print(f"Failed to find seam with given tolerances: Value tolerance {clargs.valuetolerance}, Derivative tolerance {clargs.derivativetolerance}")
     else:
-        finder.verbosePrint(f"Seam found at {seamIndex}, {finder.data.shape[0]-seamIndex} samples or {(finder.data.shape[0]-seamIndex) / finder.sampleRate:.4f}s from the end of the file")
-        finder.verbosePrint(f"Seam normalized value difference: {diffs[0]:.3f} {diffs[2]:.3f}")
-        finder.verbosePrint(f"Seam normalized derivative difference: {diffs[1]:.3f} {diffs[3]:.3f}")
-        finder.verbosePrint(f"Seam score: {score[0]}, {score[1]:.3f}, {score[2]:.3f}")
-
-        finder.writeResult(seamIndex)
-
-        if clargs.plotaudio:
-            finder.startAudioLoop(finder.outputFileName)
-        if clargs.plot or clargs.plotaudio:
-            finder.plotSeam(endIndex=seamIndex)
-        if clargs.plotaudio:
-            finder.stopAudioLoop()
+        viewer = InteractiveResultViewer(finder, results)
+        viewer.inputLoop()
